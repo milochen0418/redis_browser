@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "redis-browser"
+version = "0.1.0"
+description = ""
+authors = []
+packages = [{ include = "redis_browser" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+reflex = "0.8.24.post1"
+redis = "*"
+granian = "2.7.1"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"

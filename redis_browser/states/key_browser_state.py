@@ -51,7 +51,6 @@ class KeyBrowserState(rx.State):
                 current_level = node["__children__"]
         visible_items: list[TreeItem] = []
 
-        @rx.event
         def traverse(node_dict: dict, level: int):
             sorted_parts = sorted(node_dict.keys())
             for part in sorted_parts:
