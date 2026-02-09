@@ -43,7 +43,11 @@ def tree_node(item: TreeItem):
                 item["level"] == 0, "12px", f"calc({padding_left} + 12px)"
             )
         },
-        on_click=lambda: KeyBrowserState.select_key(item["full_path"]),
+        on_click=rx.cond(
+            item["type"] == "folder",
+            KeyBrowserState.toggle_expand(item["full_path"]),
+            KeyBrowserState.select_key(item["full_path"]),
+        ),
     )
 
 

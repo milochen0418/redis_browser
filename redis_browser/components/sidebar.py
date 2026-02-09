@@ -50,7 +50,7 @@ def sidebar():
             rx.el.div(
                 rx.icon("zap", class_name="h-6 w-6 text-indigo-600"),
                 rx.el.h1(
-                    "RediVue",
+                    "Redis Browser",
                     class_name="text-xl font-bold text-slate-800 tracking-tight",
                 ),
                 class_name="flex items-center gap-2 p-6 border-b border-slate-100 mb-4",
