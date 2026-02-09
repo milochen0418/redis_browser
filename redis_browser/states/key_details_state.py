@@ -22,6 +22,10 @@ class KeyDetailsState(rx.State):
     edit_field_value: str = ""
     edit_score: float = 0.0
 
+    @rx.event
+    def set_show_edit_modal(self, show: bool):
+        self.show_edit_modal = show
+
     @rx.var
     def ttl_display(self) -> str:
         if self.ttl == -1:

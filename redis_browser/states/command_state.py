@@ -30,7 +30,7 @@ class CommandState(rx.State):
         self.logs = []
 
     @rx.event(background=True)
-    async def execute_command(self, form_data: dict[str, str]):
+    async def execute_command(self, form_data: dict[str, Any]):
         async with self:
             cmd_str = form_data.get("command", "").strip()
             if not cmd_str:
