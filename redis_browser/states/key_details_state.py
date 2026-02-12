@@ -1,5 +1,6 @@
 import reflex as rx
 import redis
+import asyncio
 import logging
 from typing import Any, Optional, Union
 from redis_browser.states.connection_state import ConnectionState
@@ -21,6 +22,9 @@ class KeyDetailsState(rx.State):
     edit_field_name: str = ""
     edit_field_value: str = ""
     edit_score: float = 0.0
+
+    # Backend-only: generation counter to cancel stale watchers
+    _watch_generation: int = 0
 
     @rx.event
     def set_show_edit_modal(self, show: bool):
@@ -44,14 +48,16 @@ class KeyDetailsState(rx.State):
         return " ".join(parts)
 
     @rx.event(background=True)
-    async def fetch_key_details(self, key: str):
+    async def fetch_key_details(self, key: str, show_loading: bool = True):
         async with self:
-            self.is_loading = True
+            if show_loading:
+                self.is_loading = True
             self.key_name = key
             connection_state = await self.get_state(ConnectionState)
             config = connection_state.active_config
             if not config or not key:
-                self.is_loading = False
+                if show_loading:
+                    self.is_loading = False
                 return
         try:
             r = redis.Redis(
@@ -88,8 +94,100 @@ class KeyDetailsState(rx.State):
             async with self:
                 yield rx.toast(f"Error: {str(e)}")
         finally:
+            gen = None
             async with self:
-                self.is_loading = False
+                if show_loading:
+                    self.is_loading = False
+                    # Start a new keyspace watcher for this key
+                    self._watch_generation += 1
+                    gen = self._watch_generation
+            if gen is not None:
+                yield KeyDetailsState.start_watching_key(gen)
+
+    @rx.event(background=True)
+    async def start_watching_key(self, generation: int):
+        """Subscribe to Redis keyspace notifications for the selected key."""
+        async with self:
+            key = self.key_name
+            connection_state = await self.get_state(ConnectionState)
+            config = connection_state.active_config
+            if not config or not key:
+                return
+
+        pubsub = None
+        r = None
+        try:
+            r = redis.Redis(
+                host=config["host"],
+                port=config["port"],
+                password=config["password"] if config["password"] else None,
+                db=config["db"],
+                decode_responses=True,
+            )
+            # Enable keyspace notifications (KEA = keyspace events for all commands)
+            try:
+                r.config_set("notify-keyspace-events", "KEA")
+            except redis.ResponseError:
+                logging.warning(
+                    "Could not enable keyspace notifications via CONFIG SET. "
+                    "Ensure 'notify-keyspace-events KEA' is set in redis.conf."
+                )
+
+            pubsub = r.pubsub()
+            channel = f"__keyspace@{config['db']}__:{key}"
+            pubsub.subscribe(channel)
+            logging.info(f"Subscribed to keyspace notifications: {channel}")
+
+            while True:
+                # Check if this watcher is still valid
+                async with self:
+                    if self._watch_generation != generation:
+                        break
+                    if not self.key_name or self.key_name != key:
+                        break
+
+                # Non-blocking check for pub/sub messages
+                msg = await asyncio.to_thread(
+                    pubsub.get_message,
+                    ignore_subscribe_messages=True,
+                    timeout=1.0,
+                )
+                if msg and msg.get("type") == "message":
+                    event = msg.get("data", "")
+                    logging.info(
+                        f"Keyspace event for '{key}': {event}"
+                    )
+                    # Skip refresh while edit modal is open
+                    async with self:
+                        is_editing = self.show_edit_modal
+                    if not is_editing:
+                        yield KeyDetailsState.fetch_key_details(
+                            key, show_loading=False
+                        )
+
+        except Exception as e:
+            logging.exception(f"Keyspace watcher error for '{key}': {e}")
+        finally:
+            if pubsub:
+                try:
+                    pubsub.unsubscribe()
+                    pubsub.close()
+                except Exception:
+                    pass
+            if r:
+                try:
+                    r.close()
+                except Exception:
+                    pass
+            logging.info(
+                f"Keyspace watcher stopped for '{key}' (gen={generation})"
+            )
+
+    @rx.event
+    def stop_watching(self):
+        """Increment generation to signal any active watcher to stop."""
+        self._watch_generation += 1
+        self.key_name = ""
 
     @rx.event(background=True)
     async def delete_key(self):

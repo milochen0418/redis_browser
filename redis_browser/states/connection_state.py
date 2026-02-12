@@ -147,4 +147,7 @@ class ConnectionState(rx.State):
     @rx.event
     def disconnect_redis(self):
         self.is_connected = False
+        from redis_browser.states.key_details_state import KeyDetailsState
+
+        yield KeyDetailsState.stop_watching
         yield rx.toast("Disconnected from Redis server")

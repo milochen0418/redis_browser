@@ -89,7 +89,7 @@ class KeyBrowserState(rx.State):
         self.selected_key = key
         from redis_browser.states.key_details_state import KeyDetailsState
 
-        yield KeyDetailsState.fetch_key_details(key)
+        yield KeyDetailsState.fetch_key_details(key, show_loading=True)
 
     @rx.event
     def set_filter_query(self, query: str):
